@@ -1,0 +1,10 @@
+import http from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {WebSocketServer} from 'ws';
+import {Game} from './game.js';
+const files={'/':'public/index.html','/client.js':'public/client.js','/style.css':'public/style.css','/three.js':'node_modules/three/build/three.module.js','/three.core.js':'node_modules/three/build/three.core.js'};
+const server=http.createServer(async(req,res)=>{try{const path=files[new URL(req.url,'http://localhost').pathname];if(!path){res.writeHead(404);res.end();return;}const body=await readFile(new URL(path,import.meta.url));res.setHeader('Content-Type',path.endsWith('.html')?'text/html; charset=utf-8':path.endsWith('.css')?'text/css':'text/javascript');res.end(body);}catch{res.writeHead(500);res.end('Server error');}});
+const wss=new WebSocketServer({server,maxPayload:4096});const game=new Game();
+wss.on('connection',ws=>{const p=game.add();ws.send(JSON.stringify({type:'welcome',id:p.id}));ws.on('message',raw=>{try{game.message(p.id,JSON.parse(raw));}catch{}});ws.on('close',()=>game.remove(p.id));});
+setInterval(()=>{game.tick(.05);const data=JSON.stringify({type:'state',...game.snapshot()});for(const ws of wss.clients)if(ws.readyState===1&&ws.bufferedAmount<100000)ws.send(data);},50);
+server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('Crowd Cover listening on port '+(process.env.PORT||3000)));
