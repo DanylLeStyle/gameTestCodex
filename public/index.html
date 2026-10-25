@@ -1,1 +1,314 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Crowd Cover</title><link rel="stylesheet" href="/style.css"></head><body><div id="hud"><header><b>CROWD <span>COVER</span></b><small>PROTOTYPE MULTIJOUEUR · 01</small><div id="connection">Connexion…</div></header><section id="brief"><label>NE SOIS PAS L'EXCEPTION.</label><h1>La foule est<br>ta couverture.</h1><p>Un chasseur. Des dizaines de visages identiques.<br>Imite les passants, réagis au chaos, reste invisible.</p><button id="play">ENTRER DANS LA FOULE ↗</button><p class="hint">Ouvre cette même adresse sur un autre ordinateur<br>du réseau local pour rejoindre la partie.</p></section><aside><div id="role">EN ATTENTE</div><h2 id="timer">03:00</h2><p id="objective">Le premier connecté devient chasseur.</p><div id="count"></div></aside><footer><span>ZQSD / WASD · DÉPLACER &nbsp; SOURIS · REGARDER</span><span id="controls">CLIC · CAPTURER &nbsp; G · GRENADE</span><span>ÉCHAP · LIBÉRER LA SOURIS</span></footer><div id="notice"></div><div id="crosshair">+</div></div><script type="module" src="/client.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#131d23" />
+    <meta
+      name="description"
+      content="Un jeu multijoueur de cache-cache dans la foule. Imitez les passants. Déjouez le chasseur."
+    />
+    <title>Crowd Cover — Ne sois pas l’exception.</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e4ba75'/%3E%3Ctext x='12' y='45' font-size='40'%3E◉%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <canvas
+      id="world"
+      aria-label="Place du marché en trois dimensions"
+    ></canvas>
+    <div class="vignette"></div>
+    <div class="grain"></div>
+    <header id="brandbar">
+      <a class="wordmark" href="/" aria-label="Crowd Cover accueil"
+        ><span class="brand-icon">◉</span> CROWD<span class="brand-light"
+          >COVER</span
+        ><sup>02</sup></a
+      >
+      <div class="top-meta">
+        <span class="live-dot"></span><span id="connection">CONNEXION</span
+        ><button
+          id="sound-toggle"
+          class="icon-button"
+          title="Couper le son"
+          aria-label="Couper le son"
+        >
+          ♫</button
+        ><button
+          id="settings-open"
+          class="icon-button"
+          title="Paramètres"
+          aria-label="Paramètres"
+        >
+          ⚙
+        </button>
+      </div>
+    </header>
+    <main id="menu" class="screen">
+      <section class="hero">
+        <div class="eyebrow"><span></span> UN VISAGE PARMI LES AUTRES</div>
+        <h1>Tout le monde<br />est <em>suspect.</em></h1>
+        <p class="hero-description">
+          Une place animée. Un chasseur à l’affût.<br />Ta meilleure arme ?
+          Avoir l’air parfaitement banal.
+        </p>
+        <div class="hero-actions">
+          <button id="create" class="button primary">
+            <span>CRÉER UNE PARTIE</span
+            ><span class="arrow-icon" aria-hidden="true"></span></button
+          ><button id="show-join" class="button secondary">
+            <span>REJOINDRE DES AMIS</span><span>＋</span></button
+          ><button id="practice" class="text-button">
+            S’entraîner en solo <span>→</span>
+          </button>
+        </div>
+        <div class="hero-note">
+          <span class="small-orbit">◎</span> 2–8 JOUEURS <i>·</i> 1 CHASSEUR
+          <i>·</i> AUCUN VISAGE INNOCENT
+        </div>
+      </section>
+      <section class="location-card">
+        <div class="location-line">
+          <span class="live-dot"></span> TERRAIN D’OPÉRATION
+          <span>01 / 01</span>
+        </div>
+        <h2>Place des Masques</h2>
+        <p>18:42 <span>·</span> Quelque part sur la Riviera</p>
+        <div class="location-bottom">
+          <span>36 CIVILS. ET VOUS.</span
+          ><button id="how-open" class="text-button">Comment jouer ↗</button>
+        </div>
+      </section>
+      <div class="menu-bottom">
+        <span>UN JEU DE SANG-FROID ET DE MAUVAISE FOI.</span
+        ><span>PROTOTYPE JOUABLE · V0.2</span>
+      </div>
+    </main>
+    <section id="join-panel" class="modal-backdrop" hidden>
+      <form id="join-form" class="panel compact">
+        <div class="eyebrow">RETROUVER LA BANDE</div>
+        <h2>Tu as le code ?</h2>
+        <p>
+          Demande le code du salon à ton ami. Vous devez être connectés au même
+          serveur.
+        </p>
+        <label for="join-code">CODE DU SALON</label
+        ><input
+          id="join-code"
+          maxlength="5"
+          minlength="5"
+          placeholder="ABCDE"
+          autocomplete="off"
+          spellcheck="false"
+          required
+          pattern="[A-Za-z0-9]{5}"
+        />
+        <div class="button-row">
+          <button
+            type="button"
+            data-close="join-panel"
+            class="button secondary"
+          >
+            RETOUR</button
+          ><button type="submit" class="button primary">REJOINDRE ↗</button>
+        </div>
+      </form>
+    </section>
+    <section id="lobby" class="screen" hidden>
+      <div class="panel lobby-panel">
+        <div class="eyebrow">ON PRÉPARE NOS ALIBIS</div>
+        <h2>Tout le monde est là ?</h2>
+        <div class="invite-box">
+          <div>
+            <label>CODE DU SALON</label><strong id="room-code">—</strong>
+          </div>
+          <button
+            id="copy-invite"
+            class="icon-button"
+            title="Copier le lien d’invitation"
+          >
+            ↗
+          </button>
+        </div>
+        <p id="invite-description">Partage le lien ou le code avec tes amis.</p>
+        <div id="roster" class="roster"></div>
+        <div class="lobby-rules">
+          <span>◷ <b>3 minutes</b> par manche</span
+          ><span>◎ <b>36 passants</b> pour se fondre dans la masse</span
+          ><span>↻ <b>Les rôles tournent</b> à chaque manche</span>
+        </div>
+        <button id="start-round" class="button primary">
+          LANCER LA MANCHE ↗
+        </button>
+        <p id="lobby-hint" class="tiny"></p>
+        <button id="leave-lobby" class="text-button">← Quitter le salon</button>
+      </div>
+      <div class="lobby-aside">
+        <span class="eyebrow">LE PETIT CONSEIL</span>
+        <h3>
+          Ne cours pas.<br />À moins que<br /><em>tout le monde</em><br />ne
+          coure.
+        </h3>
+        <p>
+          Une onde de panique fait réagir la foule.<br />Un instant d’hésitation
+          peut te trahir.
+        </p>
+      </div>
+    </section>
+    <section id="game-hud" hidden>
+      <div id="countdown-curtain" hidden>
+        <div>
+          <span class="eyebrow">LES INFILTRÉS PRENNENT POSITION</span>
+          <h2>Un peu de patience.</h2>
+          <p>La chasse commence dans <b id="curtain-seconds">5</b> secondes.</p>
+        </div>
+      </div>
+      <div class="mission">
+        <div id="role-label" class="eyebrow">LE CHASSEUR</div>
+        <h2 id="mission-title">Repère l’imposteur.</h2>
+        <p id="mission-subtitle"></p>
+      </div>
+      <div class="round-meta">
+        <span id="phase-label">LA TRAQUE</span><strong id="timer">03:00</strong>
+        <div id="remaining"></div>
+      </div>
+      <div id="reticle"><i></i><i></i><i></i><i></i></div>
+      <div id="event-toast" aria-live="polite"></div>
+      <div id="reaction-alert" hidden>
+        <span>⚠</span>
+        <div>
+          <b>LA FOULE PANIQUE</b><small>Imite-la ! Maintiens ESPACE</small>
+        </div>
+      </div>
+      <div id="spectator" hidden>REPÉRÉ · Observe la suite de la manche</div>
+      <div class="game-bottom">
+        <div class="movement-hint">
+          <span id="movement-keys">Z Q S D</span><small>BOUGER</small
+          ><span>⌁</span><small>SOURIS · REGARDER</small>
+        </div>
+        <div id="abilities" class="abilities"></div>
+        <div class="game-info">
+          <span id="ping">— ms</span><small>ÉCHAP · MENU</small>
+        </div>
+      </div>
+      <div class="room-corner">SALON <b id="hud-code"></b></div>
+    </section>
+    <section id="pause" class="modal-backdrop" hidden>
+      <div class="panel compact">
+        <div class="eyebrow" id="pause-eyebrow">ON REPREND SON SOUFFLE</div>
+        <h2 id="pause-title">Prêt à te fondre<br />dans la foule ?</h2>
+        <p id="pause-description">
+          Clique pour capturer la souris. Échap permet de revenir ici. La partie
+          continue pendant ce menu.
+        </p>
+        <button id="resume" class="button primary">ENTRER EN JEU ↗</button
+        ><button id="pause-settings" class="button secondary">PARAMÈTRES</button
+        ><button id="leave-game" class="text-button">Quitter le salon</button>
+      </div>
+    </section>
+    <section id="results" class="modal-backdrop" hidden>
+      <div class="panel result-panel">
+        <div class="result-symbol" id="result-symbol">◎</div>
+        <div class="eyebrow">FIN DE LA MANCHE</div>
+        <h2 id="result-title"></h2>
+        <p id="result-description"></p>
+        <div id="scoreboard"></div>
+        <button id="next-round" class="button primary">
+          MANCHE SUIVANTE ↗
+        </button>
+        <p id="result-hint" class="tiny"></p>
+        <button id="leave-results" class="text-button">Quitter le salon</button>
+      </div>
+    </section>
+    <section id="settings" class="modal-backdrop" hidden>
+      <div class="panel settings-panel">
+        <div class="eyebrow">À TA FAÇON</div>
+        <h2>Paramètres</h2>
+        <label for="player-name"
+          >TON PSEUDO <small>(prochain salon)</small></label
+        ><input
+          id="player-name"
+          maxlength="18"
+          placeholder="Incognito"
+          autocomplete="nickname"
+        /><label for="layout">CLAVIER</label
+        ><select id="layout">
+          <option value="azerty">AZERTY — ZQSD</option>
+          <option value="qwerty">QWERTY — WASD</option></select
+        ><label for="sensitivity"
+          >SENSIBILITÉ <output id="sensitivity-label">50</output></label
+        ><input
+          id="sensitivity"
+          type="range"
+          min="10"
+          max="100"
+          value="50"
+        /><label for="volume"
+          >VOLUME <output id="volume-label">60 %</output></label
+        ><input id="volume" type="range" min="0" max="100" value="60" /><label
+          for="quality"
+          >GRAPHISMES</label
+        ><select id="quality">
+          <option value="high">Élevés — ombres et détails</option>
+          <option value="low">Légers — performances</option></select
+        ><label class="check-label"
+          ><input id="invert-y" type="checkbox" /> Inverser l’axe vertical de la
+          souris</label
+        ><button data-close="settings" class="button primary">
+          C’EST BON ↗
+        </button>
+      </div>
+    </section>
+    <section id="how" class="modal-backdrop" hidden>
+      <div class="panel how-panel">
+        <div class="eyebrow">L’ART DE PASSER INAPERÇU</div>
+        <h2>Deux camps.<br />Un jeu de regards.</h2>
+        <div class="how-grid">
+          <article>
+            <span>01 / CHASSEUR</span>
+            <h3>Provoque le chaos.</h3>
+            <p>
+              Tu joues en première personne. Observe les passants et lance une
+              onde de panique avec <kbd>G</kbd>. Les civils fuient : qui oublie
+              de réagir ? Vise et clique pour démasquer un infiltré.
+            </p>
+            <p>
+              Un civil touché : <b>+10 s pour les infiltrés.</b> Trois erreurs
+              et la manche est perdue.
+            </p>
+          </article>
+          <article>
+            <span>02 / INFILTRÉ</span>
+            <h3>Sois ordinaire.</h3>
+            <p>
+              Tu joues en troisième personne. Marche, arrête-toi, maintiens
+              <kbd>E</kbd> pour discuter. Si la foule autour de toi panique,
+              maintiens <kbd>ESPACE</kbd> pour l’imiter.
+            </p>
+            <p>
+              <kbd>F</kbd> attire l’attention ailleurs. Survis jusqu’à la fin du
+              temps. Ne laisse pas tes réflexes te trahir.
+            </p>
+          </article>
+        </div>
+        <button data-close="how" class="button primary">
+          J’AI MON ALIBI ↗
+        </button>
+      </div>
+    </section>
+    <div id="notification" role="status" hidden></div>
+    <div id="fatal" class="modal-backdrop" hidden>
+      <div class="panel compact">
+        <h2>Petit contretemps.</h2>
+        <p id="fatal-message"></p>
+        <button class="button primary" onclick="location.reload()">
+          RÉESSAYER ↗
+        </button>
+      </div>
+    </div>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

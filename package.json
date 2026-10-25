@@ -1,1 +1,21 @@
-{"name":"crowd-cover","version":"0.1.0","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test"},"dependencies":{"three":"0.180.0","ws":"8.18.3"}}
+{
+  "name": "crowd-cover",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "three": "0.180.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

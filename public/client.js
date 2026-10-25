@@ -1,8 +1,649 @@
-import * as THREE from '/three.js';
-const $=id=>document.getElementById(id);const scene=new THREE.Scene();scene.background=new THREE.Color('#70948e');scene.fog=new THREE.Fog('#70948e',25,75);const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,120);const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;document.body.appendChild(renderer.domElement);scene.add(new THREE.HemisphereLight(0xfff8da,0x36564e,2.5));const sun=new THREE.DirectionalLight(0xffedc3,3);sun.position.set(12,25,8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-25;sun.shadow.camera.right=25;sun.shadow.camera.top=25;sun.shadow.camera.bottom=-25;scene.add(sun);
-function box(w,h,d,color,x,y,z){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:.85}));mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);return mesh;}
-box(40,.3,40,'#b9b397',0,-.2,0);for(let i=-18;i<=18;i+=3){box(.025,.01,38,'#a49d84',i,-.04,0);box(38,.01,.025,'#a49d84',0,-.04,i);}for(const [x,z] of [[-22,-12],[-22,0],[-22,12],[22,-12],[22,0],[22,12],[-12,-22],[0,-22],[12,-22],[-12,22],[0,22],[12,22]]){box(7,8+Math.abs(x+z)%5,7,'#677c70',x,3,z);for(let y=1;y<7;y+=2)box(7.05,.65,7.05,'#abc0a0',x,y,z);}for(const [x,z] of [[-19,-19],[19,19],[-19,19],[19,-19]]){box(.2,4,.2,'#34483e',x,2,z);const light=new THREE.Mesh(new THREE.SphereGeometry(.45),new THREE.MeshStandardMaterial({color:'#eeffc5',emissive:'#eeffc5',emissiveIntensity:.5}));light.position.set(x,4,z);scene.add(light);} // Perimeter props keep the playable square unobstructed.
-const avatars=new Map();function avatar(){const g=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:'#d9b676',roughness:1});const body=new THREE.Mesh(new THREE.CapsuleGeometry(.28,.65,4,8),mat);body.position.y=.85;g.add(body);const head=new THREE.Mesh(new THREE.SphereGeometry(.23,10,8),new THREE.MeshStandardMaterial({color:'#e7c6a3'}));head.position.y=1.65;g.add(head);const hat=new THREE.Mesh(new THREE.CylinderGeometry(.28,.28,.16,10),new THREE.MeshStandardMaterial({color:'#315d55'}));hat.position.y=1.85;g.add(hat);const limbs=[];for(const x of [-.18,.18]){const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.095,.35,3,6),new THREE.MeshStandardMaterial({color:'#314b48'}));leg.position.set(x,.3,0);g.add(leg);limbs.push(leg);}for(const x of [-.39,.39]){const arm=new THREE.Mesh(new THREE.CapsuleGeometry(.085,.45,3,6),mat);arm.position.set(x,1,0);g.add(arm);limbs.push(arm);}g.userData.limbs=limbs;g.traverse(o=>{if(o.isMesh)o.castShadow=true;});scene.add(g);return g;}
-let id,state,active=false,yaw=0,pitch=0;const keys=new Set();const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);function send(m){if(ws.readyState===1)ws.send(JSON.stringify(m));}ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='welcome')id=m.id;else state=m;};ws.onclose=()=>{$('connection').textContent='Déconnecté — recharge la page';active=false;$('brief').style.display='block';document.exitPointerLock();};ws.onerror=()=>{$('connection').textContent='Connexion impossible';};$('play').onclick=()=>{if(ws.readyState!==1)return;active=true;$('brief').style.display='none';renderer.domElement.requestPointerLock();};renderer.domElement.onclick=()=>{if(active&&document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock();else if(active)send({type:'tag'});};window.addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.code==='KeyG'&&!e.repeat&&active)send({type:'grenade'});if(e.code==='KeyR'&&!e.repeat&&active)send({type:'restart'});});window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());document.addEventListener('pointerlockchange',()=>keys.clear());document.addEventListener('mousemove',e=>{if(document.pointerLockElement){yaw-=e.movementX*.002;pitch=Math.max(-.8,Math.min(.8,pitch-e.movementY*.002));}});
-setInterval(()=>{if(!active||!document.pointerLockElement){send({type:'input',x:0,z:0,angle:yaw});return;}const forward=Number(keys.has('KeyW')||keys.has('KeyZ')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'));const right=Number(keys.has('KeyD'))-Number(keys.has('KeyA')||keys.has('KeyQ'));send({type:'input',x:Math.sin(yaw)*forward+Math.cos(yaw)*right,z:-Math.cos(yaw)*forward+Math.sin(yaw)*right,angle:yaw,react:keys.has('Space'),interact:keys.has('KeyE')});},50);
-let blast;const clock=new THREE.Clock();function frame(){requestAnimationFrame(frame);const dt=Math.min(clock.getDelta(),.1),t=clock.elapsedTime;if(state){const me=state.players.find(p=>p.id===id);const all=[...state.npcs,...state.players];const present=new Set(all.map(p=>p.id));for(const [key,g] of avatars)if(!present.has(key)){scene.remove(g);avatars.delete(key);}for(const p of all){let g=avatars.get(p.id);if(!g){g=avatar();g.position.set(p.x,0,p.z);avatars.set(p.id,g);}g.visible=p.alive!==false&&!(active&&p.id===id&&p.role==='hunter');g.position.lerp(new THREE.Vector3(p.x,0,p.z),Math.min(1,dt*15));g.rotation.y=-p.angle;const moving=p.state==='walk'||p.state==='panic';const speed=p.state==='panic'?17:9;g.rotation.z=p.state==='panic'?Math.sin(t*speed)*.2:0;g.position.y=p.state==='panic'?Math.abs(Math.sin(t*speed))*.23:0;g.userData.limbs.forEach((l,i)=>{l.rotation.x=moving?Math.sin(t*speed+i%2*Math.PI)*.7:0;if(i>1&&p.state==='panic')l.rotation.z=i===2?-2:2;else l.rotation.z=p.state==='interact'&&i>1?Math.sin(t*4)*.8:0;});}if(me){const hunter=me.role==='hunter';$('connection').textContent=`EN LIGNE · ${state.players.length} JOUEUR${state.players.length>1?'S':''}`;$('role').textContent=hunter?'01 / CHASSEUR':'02 / INFILTRÉ';$('objective').textContent=hunter?'Observe les réactions. Clic pour capturer. Un civil touché offre 10 s aux infiltrés.':'Marche comme les civils. E : interagir. Espace : paniquer quand la foule panique.';$('controls').textContent=hunter?'CLIC · CAPTURER   G · GRENADE   R · RECOMMENCER':'E · INTERAGIR   ESPACE · PANIQUER';$('count').textContent=`${state.players.filter(p=>p.role==='hidden'&&p.alive).length} infiltré(s) · 24 civils`;$('crosshair').style.display=active&&hunter?'block':'none';const seconds=Math.max(0,Math.ceil((state.roundEnd-Date.now())/1000));$('timer').textContent=`${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;if(active){const target=new THREE.Vector3(me.x,1.5,me.z);if(hunter){camera.position.copy(target);camera.lookAt(target.x+Math.sin(yaw)*10,target.y+Math.sin(pitch)*10,target.z-Math.cos(yaw)*10);}else{camera.position.set(me.x-Math.sin(yaw)*5,3.7+pitch*2,me.z+Math.cos(yaw)*5);camera.lookAt(target);}}else{camera.position.set(Math.sin(t*.06)*28,24,Math.cos(t*.06)*28);camera.lookAt(0,0,0);}const event=state.events.find(e=>e.type!=='blast');$('notice').textContent=state.result||(me.alive===false?'Repéré ! Tu observes la suite.':event?.type==='mistake'?'Civil touché : +10 secondes':event?.type==='caught'?'Un infiltré a été capturé !':state.players.length===1&&active?'En attente d’autres joueurs…':'');const b=state.events.find(e=>e.type==='blast');if(b){if(!blast){blast=new THREE.Mesh(new THREE.TorusGeometry(1,.07,8,64),new THREE.MeshBasicMaterial({color:'#e2ff76',transparent:true,opacity:.7}));blast.rotation.x=-Math.PI/2;scene.add(blast);}blast.visible=true;blast.position.set(b.x,.1,b.z);const r=1+(1-(b.until-Date.now())/1800)*8;blast.scale.setScalar(r);}else if(blast)blast.visible=false;}}renderer.render(scene,camera);}frame();window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+import { createScene } from "/scene.js";
+import { AudioEngine } from "/audio.js";
+
+const $ = (id) => document.getElementById(id);
+const defaults = {
+  name: "Incognito",
+  layout: "azerty",
+  sensitivity: 50,
+  volume: 60,
+  quality: "high",
+  invertY: false,
+  muted: false,
+};
+let settings = { ...defaults };
+try {
+  settings = {
+    ...defaults,
+    ...JSON.parse(localStorage.getItem("crowd-cover-settings") || "{}"),
+  };
+} catch {}
+settings.name =
+  typeof settings.name === "string"
+    ? settings.name.slice(0, 18)
+    : defaults.name;
+for (const key of ["volume", "sensitivity"])
+  settings[key] = Number.isFinite(Number(settings[key]))
+    ? Math.max(key === "volume" ? 0 : 10, Math.min(100, Number(settings[key])))
+    : defaults[key];
+settings.layout = settings.layout === "qwerty" ? "qwerty" : "azerty";
+settings.quality = settings.quality === "low" ? "low" : "high";
+const audio = new AudioEngine();
+let graphics;
+try {
+  graphics = createScene($("world"));
+} catch (error) {
+  $("fatal").hidden = false;
+  $("fatal-message").textContent =
+    "Le rendu 3D n’a pas pu démarrer. Active l’accélération graphique de ton navigateur et réessaie. " +
+    error.message;
+  throw error;
+}
+let socket,
+  id,
+  room = null,
+  serverOffset = 0,
+  previousPhase,
+  previousRound = 0;
+let yaw = 0,
+  pitch = -0.08,
+  lastFrame = performance.now(),
+  time = 0,
+  busyUntil = 0,
+  notificationTimer;
+let cameraInitialized = false,
+  seenEvents = new Set(),
+  lastToast = "",
+  toastUntil = 0;
+let lastActionSent = 0,
+  lastUI = 0,
+  pendingInvite = new URLSearchParams(location.search).get("room");
+const keys = new Set();
+const view = {
+  yaw: 0,
+  pitch: -0.08,
+  playing: false,
+  firstPerson: false,
+  quality: settings.quality,
+};
+const me = () => room?.players.find((p) => p.id === id);
+const now = () => Date.now() + serverOffset;
+const locked = () => document.pointerLockElement === $("world");
+const save = () => {
+  try {
+    localStorage.setItem("crowd-cover-settings", JSON.stringify(settings));
+  } catch {}
+};
+function notify(message) {
+  $("notification").textContent = message;
+  $("notification").hidden = false;
+  clearTimeout(notificationTimer);
+  notificationTimer = setTimeout(() => ($("notification").hidden = true), 5000);
+}
+function send(message) {
+  if (socket?.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify(message));
+  return true;
+}
+function sound(name = "click") {
+  audio.unlock().then(() => audio.play(name));
+}
+function modalOpen(id) {
+  keys.clear();
+  $("" + id).hidden = false;
+}
+function closeModal(id) {
+  $(id).hidden = true;
+  sound();
+}
+function exitLock() {
+  keys.clear();
+  if (locked()) document.exitPointerLock();
+}
+function requestLock() {
+  if (room?.phase !== "playing") return;
+  sound("confirm");
+  try {
+    const result = $("world").requestPointerLock();
+    result?.catch(() => {
+      $("pause").hidden = false;
+      notify("Clique sur « Entrer en jeu » pour activer la souris.");
+    });
+  } catch {
+    notify(
+      "Ce navigateur ne permet pas de capturer la souris. Utilise Chrome, Edge ou Firefox sur ordinateur.",
+    );
+  }
+}
+function applySettings() {
+  audio.setVolume(settings.volume / 100);
+  audio.setMuted(settings.muted);
+  view.quality = settings.quality;
+  $("sound-toggle").textContent = settings.muted ? "♪̸" : "♫";
+  $("sound-toggle").setAttribute(
+    "aria-label",
+    settings.muted ? "Activer le son" : "Couper le son",
+  );
+  $("sound-toggle").title = settings.muted ? "Activer le son" : "Couper le son";
+  $("movement-keys").textContent =
+    settings.layout === "azerty" ? "Z Q S D" : "W A S D";
+  $("sensitivity-label").textContent = settings.sensitivity;
+  $("volume-label").textContent = `${settings.volume} %`;
+}
+for (const [key, field] of [
+  ["name", "player-name"],
+  ["layout", "layout"],
+  ["sensitivity", "sensitivity"],
+  ["volume", "volume"],
+  ["quality", "quality"],
+  ["invertY", "invert-y"],
+]) {
+  const element = $(field);
+  if (element.type === "checkbox") element.checked = settings[key];
+  else element.value = settings[key];
+  element.addEventListener("input", () => {
+    settings[key] =
+      element.type === "checkbox"
+        ? element.checked
+        : element.type === "range"
+          ? Number(element.value)
+          : element.value;
+    save();
+    applySettings();
+  });
+}
+applySettings();
+$("sound-toggle").onclick = () => {
+  settings.muted = !settings.muted;
+  save();
+  applySettings();
+  if (!settings.muted) sound("confirm");
+};
+$("settings-open").onclick = $("pause-settings").onclick = () => {
+  exitLock();
+  modalOpen("settings");
+  sound();
+};
+$("how-open").onclick = () => {
+  modalOpen("how");
+  sound();
+};
+$("show-join").onclick = () => {
+  modalOpen("join-panel");
+  $("join-code").focus();
+  sound();
+};
+for (const button of document.querySelectorAll("[data-close]"))
+  button.onclick = () => closeModal(button.dataset.close);
+for (const element of document.querySelectorAll(".modal-backdrop"))
+  element.addEventListener("click", (event) => {
+    if (
+      event.target === element &&
+      ["settings", "how", "join-panel"].includes(element.id)
+    )
+      closeModal(element.id);
+  });
+function connect() {
+  $("connection").textContent = "CONNEXION";
+  socket = new WebSocket(
+    `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`,
+  );
+  socket.onopen = () => {
+    $("connection").textContent = "SERVEUR EN LIGNE";
+  };
+  socket.onmessage = (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (message.type === "welcome") {
+      id = message.id;
+      if (pendingInvite) {
+        $("join-code").value = pendingInvite.slice(0, 5);
+        modalOpen("join-panel");
+        pendingInvite = null;
+      }
+    } else if (message.type === "joined") {
+      busyUntil = 0;
+      room = null;
+      previousPhase = null;
+      previousRound = 0;
+      cameraInitialized = false;
+      seenEvents.clear();
+      $("join-panel").hidden = true;
+      const url = new URL(location.href);
+      url.searchParams.set("room", message.code);
+      history.replaceState(null, "", url);
+    } else if (message.type === "left") {
+      resetMenu();
+    } else if (message.type === "state") {
+      const next = message.room;
+      serverOffset = next.serverTime - Date.now();
+      room = next;
+      if (!cameraInitialized || room.round !== previousRound) {
+        yaw = me()?.yaw || 0;
+        pitch = -0.08;
+        cameraInitialized = true;
+      }
+      if (room.phase !== previousPhase || room.round !== previousRound)
+        phaseChanged();
+      previousPhase = room.phase;
+      previousRound = room.round;
+      for (const event of room.events) {
+        if (seenEvents.has(event.id)) continue;
+        seenEvents.add(event.id);
+        if (now() - event.at > 2500) continue;
+        if (event.type === "caught")
+          toast(
+            event.targetId === id
+              ? "Repéré ! Le chasseur t’a démasqué."
+              : event.playerId === id
+                ? "Bien vu. Un masque tombe."
+                : "Un infiltré a été démasqué.",
+          );
+        if (event.type === "mistake")
+          toast(
+            event.playerId === id
+              ? "Un civil… +10 secondes pour les infiltrés."
+              : "Le chasseur a touché un civil.",
+          );
+        if (event.type === "decoy" && event.playerId === id)
+          toast("Diversion lancée. Reste naturel.");
+      }
+      if (seenEvents.size > 600)
+        seenEvents = new Set([...seenEvents].slice(-200));
+    } else if (message.type === "error") {
+      busyUntil = 0;
+      notify(message.message);
+    } else if (message.type === "pong") {
+      $("ping").textContent = Math.max(0, Date.now() - message.at) + " ms";
+    }
+  };
+  socket.onclose = () => {
+    resetMenu();
+    $("connection").textContent = "HORS LIGNE";
+    notify("Connexion au serveur perdue. Reconnexion en cours…");
+    setTimeout(connect, 2000);
+  };
+  socket.onerror = () => {
+    $("connection").textContent = "SERVEUR INACCESSIBLE";
+  };
+}
+function resetMenu() {
+  exitLock();
+  room = null;
+  previousPhase = null;
+  previousRound = 0;
+  cameraInitialized = false;
+  busyUntil = 0;
+  for (const name of [
+    "lobby",
+    "game-hud",
+    "pause",
+    "results",
+    "join-panel",
+    "settings",
+    "how",
+  ])
+    $(name).hidden = true;
+  $("menu").hidden = false;
+  document.body.classList.remove("in-game");
+  history.replaceState(null, "", location.pathname);
+}
+function phaseChanged() {
+  const phase = room.phase;
+  $("menu").hidden = true;
+  $("lobby").hidden = phase !== "lobby";
+  $("game-hud").hidden = phase !== "playing";
+  $("results").hidden = phase !== "ended";
+  document.body.classList.toggle("in-game", phase === "playing");
+  if (phase === "playing") {
+    $("pause").hidden = locked();
+    $("resume").textContent = "ENTRER EN JEU";
+  } else {
+    exitLock();
+    $("pause").hidden = true;
+  }
+  if (phase === "ended") {
+    const result = room.result;
+    $("result-title").textContent =
+      result.winner === "hunter" ? "Les masques tombent." : "Ni vu, ni connu.";
+    $("result-description").textContent = result.text;
+    $("result-symbol").textContent = result.winner === "hunter" ? "⌖" : "◎";
+  }
+}
+function create(practice = false) {
+  if (performance.now() < busyUntil) return;
+  if (
+    !send({
+      type: "create",
+      name: settings.name.trim() || "Incognito",
+      practice,
+    })
+  ) {
+    notify("Le serveur n’est pas encore connecté. Patiente un instant.");
+    return;
+  }
+  busyUntil = performance.now() + 3000;
+  sound("confirm");
+}
+$("create").onclick = () => create(false);
+$("practice").onclick = () => create(true);
+$("join-form").onsubmit = (event) => {
+  event.preventDefault();
+  if (
+    send({
+      type: "join",
+      code: $("join-code").value.trim().toUpperCase(),
+      name: settings.name.trim() || "Incognito",
+    })
+  )
+    sound("confirm");
+  else notify("Le serveur est hors ligne.");
+};
+$("start-round").onclick = $("next-round").onclick = () => {
+  sound("confirm");
+  send({ type: "start" });
+};
+function leave() {
+  sound();
+  send({ type: "leave" });
+  resetMenu();
+}
+for (const button of ["leave-lobby", "leave-game", "leave-results"])
+  $(button).onclick = leave;
+$("resume").onclick = requestLock;
+$("copy-invite").onclick = async () => {
+  const url = new URL(location.href);
+  url.searchParams.set("room", room.code);
+  if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+    notify(
+      `Code : ${room.code}. Pour un ami sur un autre PC, utilise l’adresse IP réseau du serveur, pas localhost.`,
+    );
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url.href);
+    notify("Lien d’invitation copié !");
+    sound("confirm");
+  } catch {
+    notify("Lien à partager : " + url.href);
+  }
+};
+function currentInput() {
+  const active =
+    locked() && room?.phase === "playing" && !($("settings").hidden === false);
+  const forwardCode = "KeyW"; // Physical W is labelled Z on AZERTY.
+
+  // KeyboardEvent.code describes the physical key: the same four keys work on both layouts.
+  return {
+    type: "input",
+    forward: active
+      ? Number(keys.has(forwardCode) || keys.has("ArrowUp")) -
+        Number(keys.has("KeyS") || keys.has("ArrowDown"))
+      : 0,
+    right: active
+      ? Number(keys.has("KeyD") || keys.has("ArrowRight")) -
+        Number(keys.has("KeyA") || keys.has("ArrowLeft"))
+      : 0,
+    yaw,
+    pitch,
+    react: active && keys.has("Space"),
+    interact: active && keys.has("KeyE"),
+    sprint: active && (keys.has("ShiftLeft") || keys.has("ShiftRight")),
+  };
+}
+function action(action) {
+  if (!locked() || room?.phase !== "playing" || !me()?.alive) return;
+  const t = performance.now();
+  if (t - lastActionSent < 100) return;
+  lastActionSent = t;
+  send(currentInput());
+  send({ type: "action", action });
+}
+window.addEventListener("keydown", (event) => {
+  if (event.target.matches("input,select")) return;
+  if (
+    locked() &&
+    [
+      "Space",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      "Tab",
+    ].includes(event.code)
+  )
+    event.preventDefault();
+  keys.add(event.code);
+  if (!event.repeat) {
+    if (event.code === "KeyG") action("pulse");
+    if (event.code === "KeyF") action("decoy");
+  }
+});
+window.addEventListener("keyup", (event) => keys.delete(event.code));
+window.addEventListener("blur", () => {
+  keys.clear();
+  send(currentInput());
+});
+document.addEventListener("mousemove", (event) => {
+  if (!locked()) return;
+  const sensitivity = 0.0005 + settings.sensitivity * 0.000035;
+  yaw -= event.movementX * sensitivity;
+  yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  pitch -= event.movementY * sensitivity * (settings.invertY ? -1 : 1);
+  pitch = Math.max(-1.05, Math.min(1.05, pitch));
+});
+$("world").addEventListener("mousedown", (event) => {
+  if (event.button === 0) action("tag");
+});
+document.addEventListener("pointerlockchange", () => {
+  keys.clear();
+  if (room?.phase === "playing") {
+    $("pause").hidden = locked();
+    $("resume").textContent = "REPRENDRE";
+  }
+  if (!locked()) send(currentInput());
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    keys.clear();
+    send(currentInput());
+  }
+});
+setInterval(() => {
+  if (room) send(currentInput());
+}, 50);
+setInterval(() => {
+  if (socket?.readyState === 1) send({ type: "ping", at: Date.now() });
+}, 2000);
+function toast(text) {
+  lastToast = text;
+  toastUntil = now() + 3000;
+}
+function renderRoster() {
+  $("roster").replaceChildren();
+  for (const player of room.players) {
+    const row = document.createElement("div");
+    row.className = "roster-row";
+    const face = document.createElement("span");
+    face.className = "roster-face";
+    face.textContent = "◉";
+    const name = document.createElement("span");
+    name.className = "roster-name";
+    name.textContent = player.name + (player.id === id ? " (toi)" : "");
+    const badge = document.createElement("span");
+    badge.className = "roster-badge";
+    badge.textContent = player.id === room.hostId ? "HÔTE" : "PRÊT";
+    row.append(face, name, badge);
+    $("roster").append(row);
+  }
+}
+function ability(key, symbol, title, status, ratio = 1) {
+  return `<div class="ability${ratio < 1 ? " cooling" : ""}"><div class="ability-top"><span class="ability-symbol">${symbol}</span><kbd>${key}</kbd></div><span class="ability-title">${title}</span><small class="ability-status">${status}</small><div class="ability-bar" style="width:${Math.max(0, Math.min(1, ratio)) * 100}%"></div></div>`;
+}
+function updateUI() {
+  for (const button of ["create", "practice"])
+    $(button).disabled =
+      performance.now() < busyUntil || socket?.readyState !== 1;
+  if (!room) return;
+  const player = me();
+  if (!player) return;
+  const host = room.hostId === id;
+  if (room.phase === "lobby") {
+    $("room-code").textContent = room.code;
+    renderRoster();
+    $("start-round").disabled = !host || room.players.length < 2;
+    $("start-round").textContent = host
+      ? "LANCER LA MANCHE"
+      : "L’HÔTE PRÉPARE LA PARTIE";
+    $("lobby-hint").textContent =
+      room.players.length < 2
+        ? "Invite au moins un ami pour lancer la partie."
+        : `${room.players.length}/8 joueurs · ${host ? "À toi de lancer." : "En attente de l’hôte."}`;
+  }
+  if (room.phase === "ended") {
+    $("next-round").disabled = !host;
+    $("result-hint").textContent = host
+      ? "Le rôle du chasseur change à la prochaine manche."
+      : "En attente de l’hôte pour la prochaine manche.";
+    $("scoreboard").replaceChildren();
+    for (const p of [...room.players].sort((a, b) => b.score - a.score)) {
+      const row = document.createElement("div");
+      row.className = "score-row";
+      const name = document.createElement("span");
+      name.textContent = p.name + (p.id === id ? " (toi)" : "");
+      const score = document.createElement("strong");
+      score.textContent = p.score + " pts";
+      row.append(name, score);
+      $("scoreboard").append(row);
+    }
+  }
+  if (room.phase !== "playing") return;
+  const hunter = player.role === "hunter",
+    countdown = Math.max(0, Math.ceil((room.startsAt - now()) / 1000));
+  $("countdown-curtain").hidden = !hunter || countdown === 0;
+  $("curtain-seconds").textContent = countdown;
+  $("role-label").textContent = room.practice
+    ? "ENTRAÎNEMENT / CHASSEUR"
+    : hunter
+      ? "01 / LE CHASSEUR"
+      : "02 / L’INFILTRÉ";
+  $("mission-title").textContent = hunter
+    ? "Repère l’imposteur."
+    : "Deviens invisible.";
+  $("mission-subtitle").textContent = room.practice
+    ? "Trois imposteurs réagissent trop tard à la panique. Observe-les et capture-les."
+    : hunter
+      ? "Provoque une réaction. Observe qui hésite. Trois civils touchés : tu perds."
+      : "Imite les passants. Réagis à la panique. Survis au chronomètre.";
+  $("pause-title").textContent = hunter
+    ? "Chaque détail compte."
+    : "Un visage parmi les autres.";
+  $("pause-eyebrow").textContent = hunter
+    ? "TU ES LE CHASSEUR"
+    : "TU ES UN INFILTRÉ";
+  $("pause-description").textContent = hunter
+    ? "Souris : regarder. Clic : capturer. G : onde de panique. Échap : menu. La manche continue pendant ce menu."
+    : "Souris : regarder. ZQSD / WASD : bouger. E : discuter. Espace : paniquer. F : diversion. La manche continue pendant ce menu.";
+  const seconds = Math.max(0, Math.ceil((room.endsAt - now()) / 1000));
+  $("timer").textContent = `${Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  $("timer").classList.toggle("urgent", seconds <= 30);
+  $("phase-label").textContent = countdown
+    ? `DISPERSION · ${countdown}`
+    : `MANCHE ${room.round}`;
+  const remaining = room.practice
+    ? room.npcs.filter((n) => n.practiceTarget && n.alive).length
+    : room.players.filter((p) => p.role === "hidden" && p.alive).length;
+  $("remaining").textContent = hunter
+    ? `${remaining} infiltré${remaining > 1 ? "s" : ""} · ${player.mistakes || 0}/3 erreurs`
+    : `${remaining} infiltré${remaining > 1 ? "s" : ""} encore caché${remaining > 1 ? "s" : ""}`;
+  $("reticle").hidden = !hunter || !player.alive;
+  $("spectator").hidden = player.alive;
+  $("hud-code").textContent = room.code;
+  const cd = player.cooldowns || {};
+  if (hunter)
+    $("abilities").innerHTML =
+      ability(
+        "CLIC",
+        "⌖",
+        "DÉMASQUER",
+        cd.tag > 0 ? "Recharge…" : "Viser un suspect",
+        1 - (cd.tag || 0) / 0.75,
+      ) +
+      ability(
+        "G",
+        "◎",
+        "ONDE DE PANIQUE",
+        cd.pulse > 0 ? `${Math.ceil(cd.pulse)} s` : "Prête · zone de 8 m",
+        1 - (cd.pulse || 0) / 10,
+      );
+  else
+    $("abilities").innerHTML =
+      ability("E", "♧", "DISCUTER", "Maintenir") +
+      ability("ESPACE", "⚡", "PANIQUER", "Maintenir") +
+      ability(
+        "F",
+        "◇",
+        "DIVERSION",
+        cd.decoy > 0 ? `${Math.ceil(cd.decoy)} s` : "Prête",
+        1 - (cd.decoy || 0) / 20,
+      );
+  const danger =
+    !hunter &&
+    player.alive &&
+    room.events.some(
+      (e) =>
+        e.type === "pulse" &&
+        now() - e.at < 3000 &&
+        Math.hypot(e.x - player.x, e.z - player.z) < 8,
+    );
+  $("reaction-alert").hidden = !danger;
+  $("event-toast").textContent = countdown
+    ? hunter
+      ? `Laisse-les se cacher… ${countdown}`
+      : `Fonds-toi dans la foule · ${countdown}`
+    : toastUntil > now()
+      ? lastToast
+      : "";
+}
+connect();
+function frame(timestamp) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((timestamp - lastFrame) / 1000, 0.08);
+  lastFrame = timestamp;
+  time += dt;
+  view.yaw = yaw;
+  view.pitch = pitch;
+  view.playing = room?.phase === "playing";
+  view.firstPerson = me()?.role === "hunter";
+  graphics.update(room, me(), view, dt, time);
+  const input = currentInput();
+  audio.update(room, me(), dt, !!(input.forward || input.right));
+  if (timestamp - lastUI > 100) {
+    updateUI();
+    lastUI = timestamp;
+  }
+}
+requestAnimationFrame(frame);
+window.addEventListener("resize", () => graphics.resize());
+
+// Render decorative diagonal arrows with CSS instead of relying on the OS symbol font.
+for (const node of document.querySelectorAll(
+  "button, .location-bottom .text-button",
+)) {
+  for (const child of [...node.childNodes])
+    if (child.nodeType === Node.TEXT_NODE && child.textContent.includes("↗")) {
+      const [before, ...after] = child.textContent.split("↗");
+      child.textContent = before;
+      const arrow = document.createElement("span");
+      arrow.className = "arrow-icon";
+      arrow.setAttribute("aria-hidden", "true");
+      node.append(arrow);
+      if (after.join("")) node.append(document.createTextNode(after.join("")));
+    }
+}
